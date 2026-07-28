@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@theme {
+  /* 方剂口诀闯关调色板：极简黑白 + 琥珀强调色 */
+  --color-background: #ffffff;
+  --color-foreground: #000000;
+  --color-muted: #f5f5f5;
+  --color-muted-foreground: #737373;
+  --color-border: #e5e5e5;
+  --color-input: #e5e5e5;
+  --color-ring: #000000;
+  --color-primary: #000000;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f5f5f5;
+  --color-secondary-foreground: #000000;
+  --color-accent: #f59e0b; /* 琥珀色 */
+  --color-accent-foreground: #000000;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  --color-card: #ffffff;
+  --color-card-foreground: #000000;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #000000;
+
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+}
+
+/* 自定义滚动条 */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-muted-foreground);
+}
+
+/* 卡片翻转动画 */
+.flip-card {
+  perspective: 1000px;
+}
+.flip-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+}
+.flip-card.flipped .flip-card-inner {
+  transform: rotateY(180deg);
+}
+.flip-card-front,
+.flip-card-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.flip-card-back {
+  transform: rotateY(180deg);
+}
+
+/* 遮罩解释点击展开 */
+.mask-text {
+  background-color: var(--color-accent);
+  color: var(--color-accent);
+  border-radius: 4px;
+  padding: 0 4px;
+  transition: all 0.3s;
+  cursor: pointer;
+}
+.mask-text:hover {
+  opacity: 0.7;
+}
+.mask-text.revealed {
+  background-color: transparent;
+  color: inherit;
+}

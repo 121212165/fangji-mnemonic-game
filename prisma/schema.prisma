@@ -1,0 +1,183 @@
+// Prisma Schema for 方剂口诀闯关 AI 增强版
+// 9 张表设计 - 详见方案文档第 5 章
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 内容表 ====================
+
+model FormulaCategory {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String   @default("")
+  sortOrder   Int      @default(0)
+  formulas    Formula[]
+
+  @@map("formula_categories")
+}
+
+model Formula {
+  id                              String   @id
+  name                            String
+  source                          String   @default("")
+  alias                           String   @default("[]")
+  categoryId                      Int
+  mnemonic                        String   @default("")
+  mnemonicExplanation             String   @default("")
+  traditionalMnemonic             String   @default("")
+  traditionalMnemonicExplanation  String   @default("")
+  ingredients                     String   @default("[]")
+  functions                       String   @default("")
+  indications                     String   @default("")
+  trigger                         String   @default("")
+  level                           String   @default("二类方")
+  sortOrder                       Int      @default(0)
+  createdAt                       DateTime @default(now())
+  updatedAt                       DateTime @updatedAt
+  category                        FormulaCategory @relation(fields: [categoryId], references: [id])
+  userMastery                     UserMastery[]
+  answerLogs                      AnswerLog[]
+
+  @@unique([name, source])
+  @@index([categoryId])
+  @@index([level])
+  @@map("formulas")
+}
+
+// ==================== 用户表 ====================
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String?
+  passwordHash    String
+  studyStage      String   @default("newbie") // newbie | intensive | sprint | final
+  dailyGoal       Int      @default(10)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  mastery         UserMastery[]
+  answerLogs      AnswerLog[]
+  dailyPlans      DailyPlan[]
+  studySessions   StudySession[]
+  conversations   AiConversation[]
+  streak          UserStreak?
+
+  @@map("users")
+}
+
+// ==================== 用户行为表 ====================
+
+model UserMastery {
+  id              Int      @id @default(autoincrement())
+  userId          String
+  formulaId       String
+  // FSRS 参数
+  stability       Float    @default(0)
+  difficulty      Float    @default(0)
+  retrievability  Float    @default(1)
+  lastReview      DateTime?
+  dueDate         DateTime @default(now())
+  reviewCount     Int      @default(0)
+  lapseCount      Int      @default(0)
+  lastRating      String?  // again | hard | good | easy
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  formula         Formula  @relation(fields: [formulaId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, formulaId])
+  @@index([userId, dueDate])
+  @@map("user_mastery")
+}
+
+model AnswerLog {
+  id                Int      @id @default(autoincrement())
+  userId            String
+  formulaId         String
+  mode              String   // learn | quiz | recite | asr
+  questionType      String   // ingredients | mnemonic | functions | indications
+  userAnswer        String   @default("")
+  correctAnswer     String   @default("")
+  isCorrect         Boolean  @default(false)
+  matchScore        Float    @default(0)
+  timeSpentSeconds  Int      @default(0)
+  rating            String?  // again | hard | good | easy
+  aiFeedbackSnapshot String? // JSON 字符串
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  formula           Formula  @relation(fields: [formulaId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([formulaId])
+  @@map("user_answer_logs")
+}
+
+model StudySession {
+  id              Int      @id @default(autoincrement())
+  userId          String
+  startedAt       DateTime @default(now())
+  endedAt         DateTime?
+  durationSeconds Int      @default(0)
+  formulasStudied String   @default("[]") // JSON 数组
+  mode            String   @default("learn")
+  correctCount    Int      @default(0)
+  wrongCount      Int      @default(0)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@map("user_study_sessions")
+}
+
+model UserStreak {
+  id              Int      @id @default(autoincrement())
+  userId          String   @unique
+  currentStreak   Int      @default(0)
+  longestStreak   Int      @default(0)
+  lastCheckIn     DateTime?
+  totalCheckIns   Int      @default(0)
+  checkInHistory  String   @default("[]") // JSON 数组
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_streaks")
+}
+
+// ==================== AI 与计划表 ====================
+
+model DailyPlan {
+  id                  Int      @id @default(autoincrement())
+  userId              String
+  planDate            DateTime
+  recommendedFormulas String   @default("[]") // JSON 数组：[{formulaId, reason, type}]
+  newCount            Int      @default(0)
+  reviewCount         Int      @default(0)
+  completedCount      Int      @default(0)
+  isCompleted         Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, planDate])
+  @@index([userId, planDate])
+  @@map("user_daily_plans")
+}
+
+model AiConversation {
+  id            Int      @id @default(autoincrement())
+  userId        String
+  formulaId     String?
+  messages      String   @default("[]") // JSON 数组
+  messageCount  Int      @default(0)
+  totalTokens   Int      @default(0)
+  model         String   @default("deepseek-chat")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("ai_conversations")
+}
