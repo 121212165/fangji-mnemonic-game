@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Flame, Target, Zap } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
 
 interface PlanItem {
   formulaId: string;
@@ -39,6 +40,7 @@ interface Props {
 
 export function TodayHome({ plan, stats }: Props) {
   const router = useRouter();
+  const { toast } = useToast();
   const [starting, setStarting] = useState(false);
 
   const progress = useMemo(() => {
@@ -67,7 +69,7 @@ export function TodayHome({ plan, stats }: Props) {
         router.push(`/formulas/${encodeURIComponent(data.formulaId)}?mode=learn`);
       }
     } catch {
-      // 静默失败：网络异常时不阻塞 UI
+      toast("网络异常，请稍后重试", "error");
     } finally {
       setStarting(false);
     }
@@ -75,7 +77,7 @@ export function TodayHome({ plan, stats }: Props) {
 
   /** 「查看错题本」按钮：占位跳转 */
   function handleErrors() {
-    router.push("/?view=errors");
+    router.push("/errors");
   }
 
   return (

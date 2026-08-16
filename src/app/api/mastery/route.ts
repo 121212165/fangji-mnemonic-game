@@ -24,7 +24,6 @@ export async function GET() {
 
     const result = masteries.map((m: any) => ({
       id: m.id,
-      userId: m.userId,
       formulaId: m.formulaId,
       stability: m.stability,
       difficulty: m.difficulty,

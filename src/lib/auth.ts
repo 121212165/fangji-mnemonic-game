@@ -14,8 +14,27 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
   return b.compare(password, hash);
 }
 
+// 启动校验：生产环境必须有 NEXTAUTH_SECRET
+if (process.env.NODE_ENV === "production" && !process.env.NEXTAUTH_SECRET) {
+  throw new Error("NEXTAUTH_SECRET 环境变量未设置，无法启动生产环境");
+}
+
 export const authOptions: NextAuthOptions = {
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 天
+  },
+  cookies: {
+    sessionToken: {
+      name: `next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+      },
+    },
+  },
   pages: {
     signIn: "/auth/login",
   },

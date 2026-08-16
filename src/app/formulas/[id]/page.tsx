@@ -1,19 +1,37 @@
 // 方剂详情页（server component）
-// 接收 params.id（Next.js 15 中 params 为 Promise），查询方剂并反序列化字段后交给客户端组件
+// ISR：1 小时重新生成一次
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { FormulaDetail } from "@/components/formula-detail";
 import type { Formula } from "@/lib/types";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600; // 1 小时 ISR
 
 interface PageProps {
   params: Promise<{ id: string }>;
 }
 
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  const { id: rawId } = await params;
+  const id = decodeURIComponent(rawId);
+  const formula = await db.formula.findUnique({
+    where: { id },
+    select: { name: true, source: true },
+  });
+  if (!formula) {
+    return { title: "方剂未找到" };
+  }
+  return {
+    title: `${formula.name} - 方剂口诀闯关`,
+    description: `${formula.name}${formula.source ? `（${formula.source}）` : ""}的组成、功用、主治与方歌`,
+  };
+}
+
 export default async function FormulaDetailPage({ params }: PageProps) {
   const { id: rawId } = await params;
-  // Next.js 15 动态路由参数不会自动 decode，需手动处理 URL 编码
   const id = decodeURIComponent(rawId);
 
   const formula = await db.formula.findUnique({
@@ -25,7 +43,6 @@ export default async function FormulaDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // 反序列化 ingredients/alias（DB 存的是 JSON 字符串）
   const serialized: Formula = {
     id: formula.id,
     name: formula.name,

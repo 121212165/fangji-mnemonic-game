@@ -9,15 +9,21 @@
 // 显示得分 + 是否通过，调 /api/answer 记录（mode=recite, questionType 对应）
 // 「下一题」按钮：调 /api/today-plan/next 跳转下一个方剂
 // 顶部连对计数：本次会话连续答对数（useState 累计）
-import { useState } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, CheckCircle2, Flame, XCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, Flame, XCircle, Mic, MicOff } from "lucide-react";
 import type { Formula } from "@/lib/types";
 import { diffIngredients, textSimilarity, isPass } from "@/lib/match";
+import { useToast } from "@/components/ui/toast";
+import { track } from "@/lib/analytics";
+import {
+  createSpeechRecognition,
+  isSpeechRecognitionSupported,
+} from "@/lib/speech-recognition";
 
 interface Props {
   formula: Formula;
@@ -66,12 +72,66 @@ function splitIngredients(s: string): string[] {
 
 export function ReciteMode({ formula }: Props) {
   const router = useRouter();
+  const { toast } = useToast();
   const [qType, setQType] = useState<QType>("ingredients");
   const [answer, setAnswer] = useState("");
   const [result, setResult] = useState<ReciteResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // 本次会话连续答对数
   const [streak, setStreak] = useState(0);
+  // ASR 语音识别状态
+  const [listening, setListening] = useState(false);
+  const asrSupported = useMemo(() => isSpeechRecognitionSupported(), []);
+  // 保留最近一次用户编辑过的文本，便于 ASR 追加时基于用户当前输入
+  const asrBaseRef = useRef("");
+  const asrInstanceRef = useRef<ReturnType<typeof createSpeechRecognition> | null>(null);
+  // 用 ref 持有 toast，避免 effect 依赖不稳定（无 Provider 时 useToast 每次返回新对象）
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+
+  // 初始化 ASR 实例（仅在支持时创建一次）
+  useEffect(() => {
+    if (!asrSupported) return;
+    asrInstanceRef.current = createSpeechRecognition({
+      lang: "zh-CN",
+      onResult: (transcript, isFinal) => {
+        const base = asrBaseRef.current;
+        const next = base ? `${base}${transcript}` : transcript;
+        setAnswer(next);
+        if (isFinal) {
+          // final 结果已并入，下次 base 更新为当前 answer
+          asrBaseRef.current = next;
+        }
+      },
+      onError: (err) => {
+        setListening(false);
+        if (err === "not-allowed" || err === "service-not-allowed") {
+          toastRef.current("麦克风权限被拒绝，请在浏览器设置中允许", "error");
+        } else if (err !== "aborted" && err !== "no-speech") {
+          toastRef.current(`语音识别出错：${err}`, "error");
+        }
+      },
+      onEnd: () => setListening(false),
+    });
+    return () => {
+      asrInstanceRef.current?.stop();
+      asrInstanceRef.current = null;
+    };
+  }, [asrSupported]);
+
+  function toggleMic() {
+    const inst = asrInstanceRef.current;
+    if (!inst) return;
+    if (listening) {
+      inst.stop();
+      setListening(false);
+    } else {
+      // 开始前同步 base 为当前输入框内容
+      asrBaseRef.current = answer;
+      inst.start();
+      setListening(true);
+    }
+  }
 
   function switchQType(t: QType) {
     setQType(t);
@@ -102,6 +162,12 @@ export function ReciteMode({ formula }: Props) {
       const passed = isPass(score);
       setResult({ score, passed, missed, wrong });
 
+      track("recite_submit", {
+        question_type: qType,
+        score: Math.round(score * 100),
+        passed,
+      });
+
       // 连对计数：通过则 +1，否则归零
       if (passed) {
         setStreak((s) => s + 1);
@@ -122,7 +188,7 @@ export function ReciteMode({ formula }: Props) {
           }),
         });
       } catch {
-        // 静默失败
+        toast("操作失败，请稍后重试", "error");
       }
 
       // 调 /api/today-plan/complete 标记本方剂为已完成
@@ -133,7 +199,7 @@ export function ReciteMode({ formula }: Props) {
           body: JSON.stringify({ formulaId: formula.id }),
         });
       } catch {
-        // 静默失败
+        toast("操作失败，请稍后重试", "error");
       }
     } finally {
       setSubmitting(false);
@@ -153,7 +219,7 @@ export function ReciteMode({ formula }: Props) {
         router.push(`/formulas/${encodeURIComponent(data.formulaId)}?mode=recite`);
       }
     } catch {
-      // 静默失败
+      toast("操作失败，请稍后重试", "error");
     }
   }
 
@@ -193,18 +259,52 @@ export function ReciteMode({ formula }: Props) {
         </div>
 
         <div className="space-y-2">
-          <Input
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            placeholder={qConfig.placeholder}
-            disabled={!!result || submitting}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !result) {
-                handleSubmit();
-              }
-            }}
-            aria-label="答案输入"
-          />
+          <div className="flex gap-2">
+            <Input
+              value={answer}
+              onChange={(e) => {
+                setAnswer(e.target.value);
+                asrBaseRef.current = e.target.value;
+              }}
+              placeholder={qConfig.placeholder}
+              disabled={!!result || submitting}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !result) {
+                  handleSubmit();
+                }
+              }}
+              aria-label="答案输入"
+              className="flex-1"
+            />
+            {asrSupported && (
+              <Button
+                type="button"
+                variant={listening ? "destructive" : "outline"}
+                size="icon"
+                onClick={toggleMic}
+                disabled={!!result || submitting}
+                aria-label={listening ? "停止语音识别" : "开始语音识别"}
+                title={listening ? "停止语音识别" : "语音背诵"}
+              >
+                {listening ? (
+                  <MicOff className="h-4 w-4" />
+                ) : (
+                  <Mic className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+          </div>
+          {listening && (
+            <p className="text-xs text-accent flex items-center gap-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-accent animate-pulse" />
+              正在聆听，请大声背诵...
+            </p>
+          )}
+          {!asrSupported && (
+            <p className="text-xs text-muted-foreground">
+              当前浏览器不支持语音识别，可使用文本输入，或换用 Chrome / Edge
+            </p>
+          )}
           {!result && (
             <Button
               variant="accent"

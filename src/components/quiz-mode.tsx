@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowRight, CheckCircle2, RotateCcw, XCircle } from "lucide-react";
 import type { Formula } from "@/lib/types";
 import { diffIngredients, isPass } from "@/lib/match";
+import { useToast } from "@/components/ui/toast";
+import { track } from "@/lib/analytics";
 
 interface Props {
   formula: Formula;
@@ -39,6 +41,7 @@ function splitIngredients(s: string): string[] {
 
 export function QuizMode({ formula }: Props) {
   const router = useRouter();
+  const { toast } = useToast();
   const [answer, setAnswer] = useState("");
   const [result, setResult] = useState<QuizResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -61,6 +64,13 @@ export function QuizMode({ formula }: Props) {
       };
       setResult(res);
 
+      track("answer_submit", {
+        mode: "quiz",
+        question_type: "ingredients",
+        score: Math.round(diff.score * 100),
+        passed,
+      });
+
       // 调 /api/answer 记录（mode=quiz, questionType=ingredients）
       try {
         await fetch("/api/answer", {
@@ -74,7 +84,7 @@ export function QuizMode({ formula }: Props) {
           }),
         });
       } catch {
-        // 静默失败：网络异常不阻塞 UI
+        toast("答题记录提交失败，请检查网络", "error");
       }
 
       // 调 /api/today-plan/complete 标记本方剂为已完成
@@ -85,7 +95,7 @@ export function QuizMode({ formula }: Props) {
           body: JSON.stringify({ formulaId: formula.id }),
         });
       } catch {
-        // 静默失败
+        toast("操作失败，请稍后重试", "error");
       }
     } finally {
       setSubmitting(false);
@@ -109,7 +119,7 @@ export function QuizMode({ formula }: Props) {
         }),
       });
     } catch {
-      // 静默失败
+      toast("操作失败，请稍后重试", "error");
     } finally {
       setRatingSubmitting(false);
     }
@@ -128,7 +138,7 @@ export function QuizMode({ formula }: Props) {
         router.push(`/formulas/${encodeURIComponent(data.formulaId)}?mode=quiz`);
       }
     } catch {
-      // 静默失败
+      toast("操作失败，请稍后重试", "error");
     }
   }
 

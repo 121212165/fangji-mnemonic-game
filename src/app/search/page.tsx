@@ -83,7 +83,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
 
         <div className="pt-4">
           <Link
-            href="/?view=search"
+            href="/"
             className="text-sm text-muted-foreground hover:text-foreground"
           >
             ← 返回首页

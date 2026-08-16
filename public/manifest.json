@@ -1,0 +1,25 @@
+{
+  "name": "方剂口诀闯关 · AI 增强版",
+  "short_name": "方剂闯关",
+  "description": "中医考研方剂背诵辅助 · 路径驱动 + AI 精准反馈",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f59e0b",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["education", "medical"]
+}
