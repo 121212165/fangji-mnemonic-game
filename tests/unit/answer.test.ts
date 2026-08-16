@@ -351,6 +351,88 @@ describe("POST /api/answer 评级自动推断", () => {
   });
 });
 
+describe("POST /api/answer 幂等（先提交后评级，防双写）", () => {
+  beforeEach(() => {
+    mockSession({ id: "u1" });
+    seedFormula();
+  });
+
+  it("提交后评级：只补 rating，不重复 FSRS review / 不新增 answerLog", async () => {
+    // 第一次：无 rating 提交（模拟 quiz-mode 提交答案）
+    const first = await postAnswer({
+      formulaId: "f1",
+      mode: "quiz",
+      questionType: "ingredients",
+      userAnswer: "麻黄、桂枝、杏仁、甘草",
+    });
+    expect(first.body.rating).toBe("easy");
+    const firstLog = [...tables.answerLog.values()][0];
+    expect(firstLog.rating).toBeNull(); // 无评级请求存 NULL，供幂等命中
+    firstLog.createdAt = new Date(); // mock 不自动补 createdAt，手动补（真实库有 @default(now())）
+    const firstMastery = [...tables.userMastery.values()][0];
+    expect(firstMastery.reviewCount).toBe(1);
+    const firstDue = first.body.nextReview;
+
+    // 第二次：带 rating 评级（模拟点击「良好」）
+    const second = await postAnswer({
+      formulaId: "f1",
+      mode: "quiz",
+      questionType: "ingredients",
+      userAnswer: "麻黄、桂枝、杏仁、甘草",
+      rating: "good",
+    });
+    expect(second.status).toBe(200);
+    expect(second.body.deduped).toBe(true);
+    expect(second.body.rating).toBe("good");
+    expect(second.body.nextReview).toBe(firstDue); // 未重新 review，dueDate 不变
+
+    // answerLog 仍只有 1 条，rating 被补上
+    const logs = [...tables.answerLog.values()];
+    expect(logs).toHaveLength(1);
+    expect(logs[0].rating).toBe("good");
+
+    // mastery 未重复 review：reviewCount 仍为 1，stability 不变，仅 lastRating 更新
+    const mastery = [...tables.userMastery.values()];
+    expect(mastery).toHaveLength(1);
+    expect(mastery[0].reviewCount).toBe(1);
+    expect(mastery[0].stability).toBe(firstMastery.stability);
+    expect(mastery[0].lastRating).toBe("good");
+  });
+
+  it("评级时同一方剂不同题型：不命中幂等，走完整逻辑", async () => {
+    await postAnswer({
+      formulaId: "f1",
+      mode: "recite",
+      questionType: "ingredients",
+      userAnswer: "麻黄、桂枝、杏仁、甘草",
+    });
+    const res = await postAnswer({
+      formulaId: "f1",
+      mode: "recite",
+      questionType: "mnemonic",
+      userAnswer: "麻黄汤中用桂枝，杏仁甘草四般施",
+      rating: "good",
+    });
+    expect(res.body.deduped).toBeUndefined();
+    const mastery = [...tables.userMastery.values()][0];
+    expect(mastery.reviewCount).toBe(2); // 是独立的一次复习
+  });
+
+  it("无先提交记录的直接评级请求：走完整逻辑，log.rating 存用户值", async () => {
+    const res = await postAnswer({
+      formulaId: "f1",
+      mode: "learn",
+      questionType: "ingredients",
+      userAnswer: "麻黄、桂枝、杏仁、甘草",
+      rating: "hard",
+    });
+    expect(res.body.deduped).toBeUndefined();
+    expect(res.body.rating).toBe("hard");
+    const log = [...tables.answerLog.values()][0];
+    expect(log.rating).toBe("hard");
+  });
+});
+
 describe("POST /api/answer 副作用（mastery / answerLog / streak）", () => {
   beforeEach(() => {
     mockSession({ id: "u1" });
