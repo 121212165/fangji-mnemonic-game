@@ -86,10 +86,11 @@ export async function generateFallbackPlan(userId: string, today: Date) {
   );
 
   // 根据 studyStage 决定新方剂范围
+  // 全部阶段都纳入三类方（数据库 119 首三类方为辅助记忆方，不应被排除在学习计划之外）
   const levelFilter =
     studyStage === "sprint" || studyStage === "final"
-      ? {} // 全部
-      : { level: "一类方" };
+      ? {}
+      : { level: { in: ["一类方", "二类方", "三类方"] } };
 
   const candidates = await db.formula.findMany({
     where: levelFilter,
