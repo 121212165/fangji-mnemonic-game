@@ -1,15 +1,41 @@
 // 分类浏览页（server component）
-// 接收 params.id，查询该分类下所有方剂，渲染列表 Card 跳转 /formulas/[id]
+// SSG：构建时预生成所有分类页
 import Link from "next/link";
+import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { Header } from "@/components/header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 interface PageProps {
   params: Promise<{ id: string }>;
+}
+
+export async function generateStaticParams() {
+  const categories = await db.formulaCategory.findMany({
+    select: { id: true },
+  });
+  return categories.map((c) => ({ id: String(c.id) }));
+}
+
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  const { id } = await params;
+  const categoryId = parseInt(id, 10);
+  const category = await db.formulaCategory.findUnique({
+    where: { id: categoryId },
+    select: { name: true, description: true },
+  });
+  if (!category) {
+    return { title: "分类未找到" };
+  }
+  return {
+    title: `${category.name} - 方剂大全`,
+    description: category.description || `${category.name}分类下的所有方剂`,
+  };
 }
 
 export default async function CategoryPage({ params }: PageProps) {
@@ -47,7 +73,7 @@ export default async function CategoryPage({ params }: PageProps) {
             <p className="text-center py-8 text-muted-foreground">暂无方剂</p>
           ) : (
             formulas.map((f, idx) => (
-              <Link key={f.id} href={`/formulas/${f.id}`} className="block">
+              <Link key={f.id} href={`/formulas/${encodeURIComponent(f.id)}`} className="block">
                 <Card className="hover:shadow-md transition-shadow cursor-pointer">
                   <CardHeader className="p-4 pb-2">
                     <div className="flex items-center justify-between">
@@ -72,7 +98,7 @@ export default async function CategoryPage({ params }: PageProps) {
 
         <div className="pt-4">
           <Link
-            href="/?view=categories"
+            href="/categories"
             className="text-sm text-muted-foreground hover:text-foreground"
           >
             ← 返回分类列表

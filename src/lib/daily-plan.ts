@@ -55,8 +55,19 @@ export async function findTodayPlan(userId: string, today: Date = startOfDay()) 
 /**
  * 生成 fallback 计划并写入数据库
  * 逻辑：取 7 个 FSRS 到期的复习 + 凑够 10 个新方剂
+ * 新方剂 level 按 studyStage 动态选择：
+ *   - newbie/intensive：优先一类方
+ *   - sprint/final：一类 + 二类方
  */
 export async function generateFallbackPlan(userId: string, today: Date) {
+  // 查用户学习阶段
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { studyStage: true, dailyGoal: true },
+  });
+  const studyStage = user?.studyStage ?? "newbie";
+  const goal = user?.dailyGoal ?? 10;
+
   // 取今日到期的复习方剂
   const due = await db.userMastery.findMany({
     where: { userId, dueDate: { lte: new Date() } },
@@ -65,7 +76,7 @@ export async function generateFallbackPlan(userId: string, today: Date) {
     include: { formula: true },
   });
 
-  // 取未学过的新方剂，凑够 10 首
+  // 取未学过的新方剂
   const learnedIds = await db.userMastery.findMany({
     where: { userId },
     select: { formulaId: true },
@@ -74,14 +85,21 @@ export async function generateFallbackPlan(userId: string, today: Date) {
     (learnedIds as Array<{ formulaId: string }>).map((m) => m.formulaId)
   );
 
+  // 根据 studyStage 决定新方剂范围
+  const levelFilter =
+    studyStage === "sprint" || studyStage === "final"
+      ? {} // 全部
+      : { level: "一类方" };
+
   const candidates = await db.formula.findMany({
-    where: { level: "一类方" },
+    where: levelFilter,
     orderBy: [{ sortOrder: "asc" }],
     take: 50,
   });
+  const newCount = Math.max(0, goal - due.length);
   const newOnes = candidates
     .filter((c) => !learnedSet.has(c.id))
-    .slice(0, 10 - due.length);
+    .slice(0, newCount);
 
   const items: PlanItem[] = [
     ...due.map((m: any) => ({

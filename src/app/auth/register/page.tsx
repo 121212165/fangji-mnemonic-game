@@ -8,24 +8,30 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { track } from "@/lib/analytics";
 
 export default function RegisterPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!agreeToTerms) {
+      setError("请阅读并同意用户协议与隐私政策");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, agreeToTerms }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -43,6 +49,7 @@ export default function RegisterPage() {
       if (signRes?.error) {
         setError("注册成功但自动登录失败，请手动登录");
       } else {
+        track("register");
         router.push("/");
         router.refresh();
       }
@@ -89,11 +96,30 @@ export default function RegisterPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="至少 6 位"
+                placeholder="至少 8 位，含字母和数字"
                 required
-                minLength={6}
+                minLength={8}
               />
             </div>
+            <label className="flex items-start gap-2 text-sm text-muted-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={agreeToTerms}
+                onChange={(e) => setAgreeToTerms(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-input accent-accent"
+                required
+              />
+              <span>
+                我已阅读并同意
+                <Link href="/terms" className="text-accent hover:underline mx-1" target="_blank">
+                  用户协议
+                </Link>
+                和
+                <Link href="/privacy" className="text-accent hover:underline mx-1" target="_blank">
+                  隐私政策
+                </Link>
+              </span>
+            </label>
             {error && <div className="text-sm text-destructive">{error}</div>}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "注册中..." : "注册并登录"}

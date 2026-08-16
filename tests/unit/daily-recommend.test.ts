@@ -1,6 +1,10 @@
 // AI 每日推荐 API 单元测试
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+// 测试用 CRON_SECRET 固定值，避免依赖 .env 是否配置
+const TEST_CRON_SECRET = "test-cron-secret-xxxx";
+process.env.CRON_SECRET = TEST_CRON_SECRET;
+
 // mock DeepSeek
 vi.mock("@/lib/deepseek", () => ({
   callDeepSeekJson: vi.fn(),
@@ -102,7 +106,7 @@ describe("POST /api/ai/daily-recommend", () => {
     const res = await POST(
       makeReq(
         { userId: "other-user" },
-        { Authorization: `Bearer ${process.env.CRON_SECRET}` }
+        { Authorization: `Bearer ${TEST_CRON_SECRET}` }
       )
     );
     expect(res.status).toBe(200);

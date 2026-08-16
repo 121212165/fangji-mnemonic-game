@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { track } from "@/lib/analytics";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function LoginPage() {
     if (res?.error) {
       setError("邮箱或密码错误");
     } else {
+      track("login");
       router.push("/");
       router.refresh();
     }
@@ -60,7 +62,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="至少 6 位"
+                placeholder="输入密码"
                 required
               />
             </div>
@@ -68,8 +70,10 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "登录中..." : "登录"}
             </Button>
-            <div className="text-center text-sm text-muted-foreground">
-              还没有账号？{" "}
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <Link href="/forgot-password" className="text-accent hover:underline">
+                忘记密码？
+              </Link>
               <Link href="/auth/register" className="text-accent hover:underline">
                 立即注册
               </Link>

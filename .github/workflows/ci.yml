@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# 同一分支新推送取消旧运行，节省 CI 资源
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 静态检查与单元测试：不需要数据库
+  lint-test:
+    name: Lint / Typecheck / Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test
+        env:
+          # 单元测试使用 mock db，仅需占位环境变量避免启动校验报错
+          DATABASE_URL: "file:./db/ci-test.db"
+          DIRECT_URL: "file:./db/ci-test.db"
+          NEXTAUTH_SECRET: "ci-test-secret-please-change"
+          NEXTAUTH_URL: "http://localhost:3000"
+          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          CRON_SECRET: "ci-cron-secret"
+
+  # 构建检查：需要数据库（SSG/ISR 页面在 build 时查询 DB）
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup database schema
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/ci_test?schema=public"
+          DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/ci_test?schema=public"
+
+      - name: Seed database
+        run: npm run db:seed
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/ci_test?schema=public"
+          DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/ci_test?schema=public"
+
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/ci_test?schema=public"
+          DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/ci_test?schema=public"
+          NEXTAUTH_SECRET: "ci-build-secret-please-change"
+          NEXTAUTH_URL: "http://localhost:3000"
+          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          CRON_SECRET: "ci-cron-secret"
+          DEEPSEEK_API_KEY: ""
+          DEEPSEEK_BASE_URL: "https://api.deepseek.com"

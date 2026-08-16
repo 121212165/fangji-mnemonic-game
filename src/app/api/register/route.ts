@@ -5,8 +5,15 @@ import { hashPassword } from "@/lib/auth";
 
 const registerSchema = z.object({
   email: z.string().email("请输入有效邮箱"),
-  password: z.string().min(6, "密码至少 6 位"),
+  password: z
+    .string()
+    .min(8, "密码至少 8 位")
+    .regex(/[a-zA-Z]/, "密码需包含字母")
+    .regex(/[0-9]/, "密码需包含数字"),
   name: z.string().min(1, "请输入昵称").max(30),
+  agreeToTerms: z.literal(true, {
+    errorMap: () => ({ message: "请阅读并同意用户协议与隐私政策" }),
+  }),
 });
 
 export async function POST(req: Request) {

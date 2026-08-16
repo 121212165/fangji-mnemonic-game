@@ -1,0 +1,98 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+
+# 同一时间只允许一个部署，避免重复部署冲突
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  # 前置检查：CI 必须先通过
+  verify-ci:
+    name: Wait for CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check CI status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // 等待 CI workflow 完成
+            const { data: runs } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ci.yml',
+              head_sha: context.sha,
+              status: 'completed',
+              per_page: 1,
+            });
+            if (runs.workflow_runs.length === 0) {
+              core.setFailed('CI workflow 尚未完成，无法部署');
+              return;
+            }
+            const run = runs.workflow_runs[0];
+            if (run.conclusion !== 'success') {
+              core.setFailed(`CI workflow 状态为 ${run.conclusion}，部署已中止`);
+              return;
+            }
+            console.log('CI 已通过，继续部署');
+
+  deploy:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+    needs: verify-ci
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Build project artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          DEPLOY_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          echo "部署完成：$DEPLOY_URL"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Health check
+        run: |
+          URL="${{ steps.deploy.outputs.url }}"
+          echo "健康检查：$URL/api/health"
+          # 最多重试 5 次，每次间隔 10 秒
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL/api/health" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ 健康检查通过（第 $i 次尝试）"
+              BODY=$(curl -s "$URL/api/health")
+              echo "响应：$BODY"
+              exit 0
+            fi
+            echo "⚠️ 第 $i 次尝试返回 $STATUS，等待 10 秒后重试..."
+            sleep 10
+          done
+          echo "❌ 健康检查失败"
+          exit 1
