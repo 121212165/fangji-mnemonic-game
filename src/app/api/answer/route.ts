@@ -127,6 +127,47 @@ export async function POST(req: Request) {
       existing?.lastRating != null ? String(existing.lastRating) : null;
     const ratingChanged = prevRatingStr !== null && prevRatingStr !== finalRating;
 
+    // 6.5 幂等防双写：前端「先提交答案、后点评级」会发两次 /api/answer。
+    //     若 5 分钟内已存在同用户/同方剂/同题型、尚未评级（rating=null）的答题记录，
+    //     本次仅把该记录的 rating 补上，不重复 FSRS review、不重复写 answerLog、不重复 bumpStreak。
+    if (rating) {
+      const dedupeCutoff = new Date(Date.now() - 5 * 60 * 1000);
+      const pendingLogs = await db.answerLog.findMany({
+        where: {
+          userId,
+          formulaId,
+          mode,
+          questionType,
+          rating: null,
+          createdAt: { gte: dedupeCutoff },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      });
+      if (pendingLogs.length > 0) {
+        const pendingLog = pendingLogs[0];
+        await db.answerLog.update({
+          where: { id: pendingLog.id },
+          data: { rating: finalRating },
+        });
+        // mastery 只补 lastRating，不重新 review（stability/dueDate/reviewCount 保持不变）
+        if (existing) {
+          await db.userMastery.update({
+            where: { id: existing.id },
+            data: { lastRating: finalRating },
+          });
+        }
+        return NextResponse.json({
+          isCorrect,
+          score,
+          diff,
+          nextReview: existing?.dueDate ?? new Date(),
+          rating: finalRating,
+          deduped: true,
+        });
+      }
+    }
+
     const now = new Date();
     const result = review(prev, finalRating, now);
     const newState = result.state;
@@ -164,6 +205,8 @@ export async function POST(req: Request) {
     }
 
     // 8. answer log
+    //    注意：无评级请求（rating=null）时 log.rating 存 NULL，
+    //    以便后续「评级」请求能通过 rating=null 幂等命中（见 6.5），避免重复 review/重复日志。
     await db.answerLog.create({
       data: {
         userId,
@@ -175,7 +218,7 @@ export async function POST(req: Request) {
         isCorrect,
         matchScore: score,
         timeSpentSeconds: typeof timeSpentSeconds === "number" ? Math.max(0, Math.floor(timeSpentSeconds)) : 0,
-        rating: finalRating,
+        rating: rating ?? null,
       },
     });
 
