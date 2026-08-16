@@ -18,7 +18,12 @@ const registerSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "请求体格式错误" }, { status: 400 });
+    }
     const parsed = registerSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

@@ -58,7 +58,7 @@ export default async function FormulaDetailPage({ params }: PageProps) {
     functions: formula.functions,
     indications: formula.indications,
     trigger: formula.trigger,
-    level: formula.level === "一类方" ? "一类方" : "二类方",
+    level: formula.level as Formula["level"],
     sortOrder: formula.sortOrder,
   };
 

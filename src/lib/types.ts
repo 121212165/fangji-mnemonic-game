@@ -15,7 +15,7 @@ export interface Formula {
   functions: string;
   indications: string;
   trigger: string;
-  level: "一类方" | "二类方";
+  level: "一类方" | "二类方" | "三类方";
   sortOrder: number;
 }
 
