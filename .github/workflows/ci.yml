@@ -78,7 +78,8 @@ jobs:
         run: npm ci
 
       - name: Setup database schema
-        run: npx prisma migrate deploy
+        # 项目采用 db push 工作流（无 migrations 目录），与 package.json db:push 一致
+        run: npx prisma db push --skip-generate
         env:
           DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/ci_test?schema=public"
           DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/ci_test?schema=public"
