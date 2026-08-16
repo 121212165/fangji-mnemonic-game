@@ -19,3 +19,6 @@ coverage
 # IDE 本地配置 / 构建产物
 .trae/
 tsconfig.tsbuildinfo
+
+# Vercel 本地链接配置
+.vercel/
